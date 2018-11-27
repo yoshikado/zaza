@@ -208,7 +208,7 @@ def get_cinder_session_client(session):
     :returns: Authenticated cinderclient
     :rtype: cinderclient.Client object
     """
-    return cinderclient.Client(session=session)
+    return cinderclient.Client(3, session=session)
 
 
 def get_keystone_scope():
@@ -1821,3 +1821,87 @@ def neutron_bgp_speaker_appears_on_agent(neutron_client, agent_id):
             'No BGP Speaker appeared on agent "{}"'
             ''.format(agent_id))
     return result
+
+
+def create_volume(cinder, size, name=None, image=None):
+    """Create cinder volume.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param size: Size of the volume
+    :type size: int
+    :param name: display name for new volume
+    :type name: Option[str, None]
+    :param image: Image to download to volume.
+    :type image: Option[str, None]
+    :returns: cinder volume pointer
+    :rtype: cinderclient.common.utils.RequestIdProxy
+    """
+    logging.debug('Creating volume')
+    if not size:
+        raise Exception("Size for volume not specified")
+    # Create volume
+    volume = cinder.volumes.create(
+        size=size,
+        name=name,
+        imageRef=image)
+
+    resource_reaches_status(
+        cinder.volumes,
+        volume.id,
+        expected_status='available',
+        msg='Volume status wait')
+    return volume
+
+
+def create_volume_backup(cinder, volume_id, name=None):
+    """Create cinder volume backup.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinder.Client
+    :param volume_id: the source volume's id for backup
+    :type volume_id: str
+    :param name: display name for new volume backup
+    :type name: Option[str, None]
+    :returns: cinder volume backup pointer
+    :rtype: cinderclient.common.utils.RequestIdProxy
+    """
+    logging.debug('Creating volume backup')
+    if not volume_id:
+        raise Exception("volume_id not specified")
+    # Create volume backup
+    volume_backup = cinder.backups.create(
+        volume_id,
+        name=name)
+
+    resource_reaches_status(
+        cinder.backups,
+        volume_backup.id,
+        expected_status='available',
+        msg='Volume status wait')
+    return volume_backup
+
+
+def delete_volume(cinder, vol_id):
+    """Delete the given volume from cinder.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinderclient.Client
+    :param vol_id: unique name or id for the openstack resource
+    :type vol_id: str
+    """
+    resource_removed.retry.stop = tenacity.stop_after_attempt(5)
+    delete_resource(cinder.volumes, vol_id, msg="deleting cinder volume")
+
+
+def delete_volume_backup(cinder, vol_backup_id):
+    """Delete the given volume from cinder.
+
+    :param cinder: Authenticated cinderclient
+    :type cinder: cinderclient.Client
+    :param vol_backup_id: unique name or id for the openstack resource
+    :type vol_backup_id: str
+    """
+    resource_removed.retry.stop = tenacity.stop_after_attempt(5)
+    delete_resource(cinder.backups, vol_backup_id,
+                    msg="deleting cinder volume backup")
